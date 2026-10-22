@@ -1,4 +1,4 @@
-"""Build the review prompt sent to the Cursor agent."""
+"""Build the review prompt sent to the model."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ _DIFF_FILE = re.compile(r"^diff --git a/(.+?) b/(.+)$", re.MULTILINE)
 _INSTRUCTIONS = """\
 You are reviewing a GitHub pull request. Report issues a reviewer should act on: correctness bugs, security problems, broken behavior, and missing tests for risky changes. Skip style nits and restating the diff.
 
-The unified diff is the change under review. The workspace is a local checkout and may be on a different commit. Use it to read surrounding code. Do not treat uncommitted local edits as part of the pull request. Do not edit files, commit, or push.
+The unified diff below is the change under review. Review that diff. Do not edit files, commit, or push.
 
 Reply in markdown with only these sections:
 
@@ -62,8 +62,7 @@ def build_review_prompt(
     if truncated:
         truncation_note = (
             f"\n\nThe diff was truncated to {max_diff_chars} characters. "
-            "Files listed above that are missing from the truncated diff still changed. "
-            "Read them in the workspace when they exist.\n"
+            "Files listed above that are missing from the truncated diff still changed.\n"
         )
 
     return (

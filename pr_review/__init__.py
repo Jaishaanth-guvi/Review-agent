@@ -1,3 +1,3 @@
-"""Review a GitHub pull request with a local Cursor agent."""
+"""Review GitHub pull requests from a GitHub App webhook."""
 
 __version__ = "0.1.0"

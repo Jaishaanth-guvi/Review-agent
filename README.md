@@ -1,57 +1,57 @@
 # pr-review-agent
 
-A command-line review agent. It downloads a GitHub pull request, runs a local [Cursor SDK](https://cursor.com/docs/sdk/python) agent against a checkout with read-only tools, and prints the review to stdout.
+A GitHub App webhook. When a pull request is opened or updated, it sends the diff to OpenAdapter and posts one comment on the pull request. A later push updates that comment.
 
-The agent can read files in the workspace. It is not given edit or shell tools.
+The model sees the pull request title, description, file list, and unified diff. Diffs longer than 80000 characters are truncated. It does not read the repository checkout.
 
 ## Setup
 
-Python 3.10 or newer, and a Cursor API key (user key or team service-account key) from the [Cursor dashboard](https://cursor.com/dashboard/integrations).
+Python 3.10 or newer, and an OpenAdapter API key.
 
 ```bash
 uv venv --python 3.12
 uv pip install -e .
-export CURSOR_API_KEY="cursor_..."
 ```
-
-Private repositories also need `GITHUB_TOKEN` or `GH_TOKEN` with pull request read access.
-
-## Usage
-
-Run it from the repository you want the agent to read, or pass `--cwd`.
 
 ```bash
-pr-review https://github.com/owner/repo/pull/123
-pr-review owner/repo#123 --cwd /path/to/checkout
-pr-review 123 --repo owner/repo
+export OPENADAPTOR_API_KEY="sk-cv-..."
+export OPENADAPTOR_BASE_URL="https://api.openadapter.in/v1"
+export OPENADAPTOR_MODEL="GLM-5"
+export GITHUB_APP_ID="123456"
+export GITHUB_APP_PRIVATE_KEY="/path/to/app.private-key.pem"
+export GITHUB_WEBHOOK_SECRET="a long random string"
+pr-review-listen
 ```
 
-A bare number uses `--repo`, then `GITHUB_REPOSITORY`, then the `origin` remote of `--cwd`.
+`OPENADAPTOR_BASE_URL` and `OPENADAPTOR_MODEL` are optional. They default to the values above. The review request goes to `{OPENADAPTOR_BASE_URL}/chat/completions`.
 
-`--dry-run` prints the prompt and does not call the agent.
+`GITHUB_APP_PRIVATE_KEY` may be a path to the PEM file, or the PEM text itself. The listener reviews `opened`, `synchronize`, and `ready_for_review`. It skips drafts.
 
-Stdout is the review. Progress and errors go to stderr.
+## Docker
+
+Docker Compose publishes the listener on port **8000**. That port stays the same after a restart. Put a hostname GitHub can reach in front of it:
 
 ```text
-### Summary
-...
-
-### Findings
-- **major**: `path` — problem, why it matters, and a fix.
-
-### Verdict
-request changes — ...
+http://<hostname>:8000/webhook
 ```
 
-## Exit codes
+```bash
+docker compose up --build -d
+```
 
-| Code | Meaning |
-| --- | --- |
-| 0 | The run finished. The review is on stdout. |
-| 1 | The agent never started (missing key, auth, config, network). |
-| 2 | The run started and did not finish (`error`, `cancelled`, or `expired`). |
-| 3 | The pull request reference or GitHub download failed, or `--cwd` is missing. |
+The `review` logs print `GITHUB_WEBHOOK_SECRET`. Paste that into the GitHub App webhook secret. When the hostname changes, keep port `8000` and replace only the hostname.
 
-## What the agent sees
+Set `OPENADAPTOR_API_KEY`, `GITHUB_APP_ID`, and `GITHUB_APP_PRIVATE_KEY` in the environment or a `.env` file next to `docker-compose.yml` before pull requests can be reviewed. `OPENADAPTOR_BASE_URL` and `OPENADAPTOR_MODEL` can be set there too.
 
-The prompt contains the pull request title, description, file list, and unified diff (truncated at `--max-diff-chars`, default 80000). The local checkout is context for surrounding code and may be on a different commit than the pull request. Project settings from that checkout's `.cursor/` directory are loaded. User, team, and plugin settings are not.
+## GitHub App
+
+Create the app under GitHub Settings, Developer settings, GitHub Apps:
+
+- Webhook URL: `http://<hostname>:8000/webhook`
+- Webhook secret: the value you will put in `GITHUB_WEBHOOK_SECRET`
+- Permissions: Contents read, Pull requests read and write, Issues read and write, Metadata read
+- Subscribe to the Pull requests event
+- Generate a private key and note the App ID
+- Install the app on the organization, for all repositories or a selected set
+
+The comment starts with `<!-- pr-review-agent -->`. If the review does not finish, the comment says there is no verdict and includes the run id when one exists.

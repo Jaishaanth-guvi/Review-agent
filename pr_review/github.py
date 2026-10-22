@@ -1,11 +1,8 @@
-"""Resolve a pull request reference and download its metadata and diff."""
+"""Download a pull request's metadata and diff."""
 
 from __future__ import annotations
 
 import json
-import os
-import re
-import subprocess
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -13,22 +10,9 @@ from dataclasses import dataclass
 GITHUB_API = "https://api.github.com"
 USER_AGENT = "pr-review-agent"
 
-_PR_URL = re.compile(
-    r"^https?://github\.com/"
-    r"(?P<owner>[^/]+)/(?P<repo>[^/]+)/pull/(?P<number>\d+)(?:/.*)?$"
-)
-_PR_SHORT = re.compile(
-    r"^(?P<owner>[^/]+)/(?P<repo>[^/#]+)(?:#(?P<number>\d+)|/pull/(?P<number2>\d+))$"
-)
-_PR_NUMBER = re.compile(r"^(?P<number>\d+)$")
-_REMOTE = re.compile(
-    r"github\.com[:/](?P<owner>[^/:]+)/(?P<repo>[^/]+?)(?:\.git)?/?$"
-)
-_REPO_SLUG = re.compile(r"^(?P<owner>[^/]+)/(?P<repo>[^/]+)$")
-
 
 class GitHubError(Exception):
-    """The pull request could not be resolved or downloaded."""
+    """The pull request could not be downloaded."""
 
 
 @dataclass(frozen=True)
@@ -48,64 +32,6 @@ class PullRequest:
     @property
     def slug(self) -> str:
         return f"{self.owner}/{self.repo}#{self.number}"
-
-
-def parse_repo_slug(value: str) -> tuple[str, str]:
-    """Parse ``owner/repo`` into its two parts."""
-    match = _REPO_SLUG.fullmatch(value.strip())
-    if match is None:
-        raise GitHubError(f"Expected owner/repo, got {value!r}.")
-    return match.group("owner"), _strip_git_suffix(match.group("repo"))
-
-
-def parse_github_remote(url: str) -> tuple[str, str] | None:
-    """Return ``(owner, repo)`` when ``url`` points at a GitHub repository."""
-    match = _REMOTE.search(url.strip())
-    if match is None:
-        return None
-    return match.group("owner"), _strip_git_suffix(match.group("repo"))
-
-
-def resolve_pull_request_ref(
-    value: str,
-    *,
-    repo: str | None = None,
-    cwd: str = ".",
-    remote_url: str | None = None,
-    github_repository: str | None = None,
-) -> tuple[str, str, int]:
-    """Turn a URL, ``owner/repo#n``, or a bare number into owner, repo, and number.
-
-    A bare number uses ``repo`` when given, then ``github_repository``, then
-    ``remote_url``, then ``origin`` in ``cwd``.
-    """
-    text = value.strip()
-    url_match = _PR_URL.fullmatch(text)
-    if url_match is not None:
-        owner, name = url_match.group("owner"), _strip_git_suffix(url_match.group("repo"))
-        _reject_repo_mismatch(repo, owner, name)
-        return owner, name, int(url_match.group("number"))
-
-    short_match = _PR_SHORT.fullmatch(text)
-    if short_match is not None:
-        number = short_match.group("number") or short_match.group("number2")
-        owner, name = short_match.group("owner"), _strip_git_suffix(short_match.group("repo"))
-        _reject_repo_mismatch(repo, owner, name)
-        return owner, name, int(number)
-
-    number_match = _PR_NUMBER.fullmatch(text)
-    if number_match is None:
-        raise GitHubError(
-            "Pass a GitHub pull request URL, owner/repo#123, or a pull request number."
-        )
-
-    owner, name = _repo_for_number(
-        repo=repo,
-        cwd=cwd,
-        remote_url=remote_url,
-        github_repository=github_repository,
-    )
-    return owner, name, int(number_match.group("number"))
 
 
 def fetch_pull_request(
@@ -129,10 +55,7 @@ def fetch_pull_request(
     except urllib.error.HTTPError as err:
         detail = _http_error_detail(err)
         if err.code == 404:
-            raise GitHubError(
-                f"Pull request {owner}/{repo}#{number} was not found. "
-                "For a private repository, set GITHUB_TOKEN or GH_TOKEN."
-            ) from err
+            raise GitHubError(f"Pull request {owner}/{repo}#{number} was not found.") from err
         raise GitHubError(
             f"GitHub API returned {err.code} for {owner}/{repo}#{number}: {detail}"
         ) from err
@@ -155,64 +78,6 @@ def fetch_pull_request(
         head_sha=str(head.get("sha") or ""),
         diff=diff,
     )
-
-
-def origin_remote_url(cwd: str) -> str | None:
-    """Return the ``origin`` remote URL for ``cwd``, or ``None`` when git has none."""
-    try:
-        completed = subprocess.run(
-            ["git", "-C", cwd, "remote", "get-url", "origin"],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-    except OSError:
-        return None
-    if completed.returncode != 0:
-        return None
-    url = completed.stdout.strip()
-    return url or None
-
-
-def github_token_from_env() -> str | None:
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-    return token.strip() if token else None
-
-
-def _repo_for_number(
-    *,
-    repo: str | None,
-    cwd: str,
-    remote_url: str | None,
-    github_repository: str | None,
-) -> tuple[str, str]:
-    if repo:
-        return parse_repo_slug(repo)
-    if github_repository:
-        return parse_repo_slug(github_repository)
-    url = remote_url if remote_url is not None else origin_remote_url(cwd)
-    if url:
-        parsed = parse_github_remote(url)
-        if parsed is not None:
-            return parsed
-    raise GitHubError(
-        "A bare pull request number needs a repository. "
-        "Pass --repo owner/repo, set GITHUB_REPOSITORY, or run inside a checkout whose origin is GitHub."
-    )
-
-
-def _reject_repo_mismatch(repo: str | None, owner: str, name: str) -> None:
-    if not repo:
-        return
-    flag_owner, flag_name = parse_repo_slug(repo)
-    if (flag_owner, flag_name) != (owner, name):
-        raise GitHubError(
-            f"--repo {flag_owner}/{flag_name} does not match {owner}/{name} in the pull request reference."
-        )
-
-
-def _strip_git_suffix(name: str) -> str:
-    return name[:-4] if name.endswith(".git") else name
 
 
 def _request_json(url: str, *, token: str | None, timeout: float) -> dict:

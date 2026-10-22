@@ -1,15 +1,16 @@
 [project]
 name = "pr-review-agent"
 version = "0.1.0"
-description = "Review a GitHub pull request with a local Cursor agent and print the findings."
+description = "Review GitHub pull requests from a GitHub App webhook and post the findings as a comment."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "cursor-sdk>=1.0.40",
+    "PyJWT>=2.8",
+    "cryptography>=42",
 ]
 
 [project.scripts]
-pr-review = "pr_review.cli:main"
+pr-review-listen = "pr_review.server:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

@@ -1,0 +1,21 @@
+services:
+  review:
+    build: .
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8000"
+      OPENADAPTOR_API_KEY: ${OPENADAPTOR_API_KEY:-}
+      OPENADAPTOR_BASE_URL: ${OPENADAPTOR_BASE_URL:-https://api.openadapter.in/v1}
+      OPENADAPTOR_MODEL: ${OPENADAPTOR_MODEL:-GLM-5}
+      GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - webhook-secret:/var/lib/pr-review
+      - ${GITHUB_APP_PRIVATE_KEY_FILE}:/run/secrets/github-app.pem:ro
+    restart: unless-stopped
+
+volumes:
+  webhook-secret:
