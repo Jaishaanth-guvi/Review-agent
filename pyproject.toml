@@ -1,0 +1,25 @@
+[project]
+name = "pr-review-agent"
+version = "0.1.0"
+description = "Review a GitHub pull request with a local Cursor agent and print the findings."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "cursor-sdk>=1.0.40",
+]
+
+[project.scripts]
+pr-review = "pr_review.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pr_review"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
