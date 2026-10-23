@@ -10,23 +10,20 @@ DEFAULT_MAX_DIFF_CHARS = 80_000
 _DIFF_FILE = re.compile(r"^diff --git a/(.+?) b/(.+)$", re.MULTILINE)
 
 _INSTRUCTIONS = """\
-You are reviewing a GitHub pull request. Report issues a reviewer should act on: correctness bugs, security problems, broken behavior, and missing tests for risky changes. Skip style nits and restating the diff.
+You are reviewing a GitHub pull request. Report correctness bugs, security problems, broken behavior, a dependent file the change can break, and a risky change that has no test. Skip style nits and restating the diff.
 
-The unified diff below is the change under review. Review that diff. Do not edit files, commit, or push.
+The unified diff below is the change under review. Review that diff and the dependency note. Do not edit files, commit, or push.
 
-Reply in markdown with only these sections:
+Reply with nothing else.
 
-### Summary
-2-4 sentences on what changed and whether the change holds together.
+If there is an issue, write one block per issue. Start with the file and line, then explain it in plain language so a reader can follow it without opening the code. Say what the person does, what goes wrong, and why. Add a short example when the behavior is not obvious from the line alone. Do not use section headings.
 
-### Findings
-One bullet per finding:
-- **critical** or **major** or **minor**: `path` — what is wrong, why it matters, and a one-sentence fix.
+`path`:line — one sentence that names the problem
 
-If there is nothing to report, write `None.`
+Then two to four sentences of explanation.
 
-### Verdict
-One line: `approve` or `request changes`, then a brief reason.
+If there is no issue, write one short sentence about what the change fixes, then a new line:
+ready for approve
 """
 
 
@@ -44,6 +41,7 @@ def build_review_prompt(
     pull_request: PullRequest,
     *,
     max_diff_chars: int = DEFAULT_MAX_DIFF_CHARS,
+    context: str = "",
 ) -> str:
     """Assemble the one-shot review prompt, truncating an oversized diff."""
     if max_diff_chars < 1:
@@ -65,6 +63,7 @@ def build_review_prompt(
             "Files listed above that are missing from the truncated diff still changed.\n"
         )
 
+    note = context.strip() or "Dependency check was unavailable."
     return (
         f"{_INSTRUCTIONS}\n"
         f"Pull request: {pull_request.slug}\n"
@@ -76,5 +75,6 @@ def build_review_prompt(
         f"Description:\n{body}\n\n"
         f"Files:\n{file_list}\n"
         f"{truncation_note}\n"
+        f"{note}\n\n"
         f"Diff:\n```diff\n{diff}\n```\n"
     )

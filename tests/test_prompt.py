@@ -28,8 +28,11 @@ class PromptTests(unittest.TestCase):
         self.assertIn("acme/widgets#12", prompt)
         self.assertIn("Add login", prompt)
         self.assertIn("src/login.py", prompt)
-        self.assertIn("### Findings", prompt)
+        self.assertIn("ready for approve", prompt)
+        self.assertIn("`path`:line", prompt)
+        self.assertIn("what the person does", prompt)
         self.assertIn("Do not edit files", prompt)
+        self.assertNotIn("### Findings", prompt)
 
     def test_truncates_diff_and_keeps_file_list(self):
         diff = (
@@ -42,6 +45,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn("src/a.py", prompt)
         self.assertIn("src/b.py", prompt)
         self.assertIn("truncated", prompt)
+        self.assertIn("Dependency check was unavailable.", prompt)
         self.assertLess(prompt.index("```diff"), prompt.index("truncated") + 500)
 
     def test_changed_files_dedupes(self):

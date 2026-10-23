@@ -2,7 +2,7 @@
 
 A GitHub App webhook. When a pull request is opened or updated, it sends the diff to OpenAdapter and posts one comment on the pull request. A later push updates that comment.
 
-The model sees the pull request title, description, file list, and unified diff. Diffs longer than 80000 characters are truncated. It does not read the repository checkout.
+The model sees the pull request title, description, file list, unified diff, and a short note of files that depend on the change and tests that mention it. Diffs longer than 80000 characters are truncated. When something is wrong, the comment names the file and line, then explains what the person does, what goes wrong, and why. When nothing is wrong, it is a short note and `ready for approve`.
 
 ## Setup
 
@@ -25,7 +25,7 @@ pr-review-listen
 
 `OPENADAPTOR_BASE_URL` and `OPENADAPTOR_MODEL` are optional. They default to the values above. The review request goes to `{OPENADAPTOR_BASE_URL}/chat/completions`.
 
-`GITHUB_APP_PRIVATE_KEY` may be a path to the PEM file, or the PEM text itself. The listener reviews `opened`, `synchronize`, and `ready_for_review`. It skips drafts.
+Open `http://127.0.0.1:8000/` to see whether a worker is reviewing a pull request. The page refreshes itself.
 
 ## Docker
 

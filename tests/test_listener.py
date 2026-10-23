@@ -16,6 +16,7 @@ from pr_review.github import PullRequest
 from pr_review.review import ReviewOutcome
 from pr_review.server import (
     ListenerConfig,
+    ReviewBoard,
     ReviewJob,
     comment_from_outcome,
     config_from_env,
@@ -23,6 +24,7 @@ from pr_review.server import (
     missing_review_credentials,
     process_review_job,
     review_job_from_event,
+    status_page,
 )
 
 
@@ -244,6 +246,12 @@ class ProcessJobTests(unittest.TestCase):
                 mock.patch("pr_review.server.mint_installation_token", return_value="ghs_token")
             )
             stack.enter_context(mock.patch("pr_review.server.fetch_pull_request", return_value=pull))
+            stack.enter_context(
+                mock.patch(
+                    "pr_review.server._dependency_context",
+                    return_value="Dependents:\nNone.\n\nTests:\nNo test for the change was found.\n",
+                )
+            )
             review = stack.enter_context(
                 mock.patch(
                     "pr_review.server.run_review",
@@ -257,10 +265,37 @@ class ProcessJobTests(unittest.TestCase):
 
         self.assertEqual(review.call_args.kwargs["api_key"], "cursor")
         self.assertIn("diff --git", review.call_args.args[0])
+        self.assertIn("No test for the change was found.", review.call_args.args[0])
         self.assertEqual(posted["where"], ("acme", "widgets", 12))
         self.assertEqual(posted["token"], "ghs_token")
         self.assertIn("### Summary", posted["body"])
         self.assertTrue(posted["body"].startswith(COMMENT_MARKER))
+
+
+class ReviewBoardTests(unittest.TestCase):
+    def test_snapshot_shows_a_running_review_and_the_queue(self):
+        board = ReviewBoard(worker_count=1)
+        running = ReviewJob("acme", "widgets", 12, 99, "opened")
+        waiting = ReviewJob("acme", "widgets", 13, 99, "synchronize")
+        board.queued(running)
+        board.queued(waiting)
+        board.started(1, running)
+        snapshot = board.snapshot()
+        self.assertTrue(snapshot["reviewing"])
+        self.assertEqual(snapshot["active_reviews"], 1)
+        self.assertEqual(snapshot["workers"][0]["state"], "reviewing")
+        self.assertEqual(snapshot["workers"][0]["pull_request"], "acme/widgets#12")
+        self.assertEqual(snapshot["queue"], [{"pull_request": "acme/widgets#13", "action": "synchronize"}])
+        board.finished(1, running, "posted")
+        done = board.snapshot()
+        self.assertFalse(done["reviewing"])
+        self.assertEqual(done["workers"][0]["state"], "idle")
+        self.assertEqual(done["recent"][0]["result"], "posted")
+
+    def test_status_page_names_workers(self):
+        page = status_page()
+        self.assertIn("Workers", page)
+        self.assertIn("/status", page)
 
 
 class CommentBodyTests(unittest.TestCase):
